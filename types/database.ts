@@ -15,6 +15,7 @@ export interface Location {
   longitude: number;
   address?: string;
   city?: string;
+  cityId?: string; // Reference to cities constant
 }
 
 export interface Ride {
@@ -26,8 +27,12 @@ export interface Ride {
   time: string;
   status: 'active' | 'completed' | 'cancelled';
   taxi_preference: string | null;
+  payment_method: string | null;
   max_passengers: number;
   description: string | null;
+  event_type: string | null; // NEW: Type of event (concert, soccer, etc.)
+  event_name: string | null; // NEW: Name of event
+  is_event: boolean; // NEW: Whether this is an event-based ride
   created_at: string;
   updated_at: string;
   // Joined data
@@ -81,4 +86,3 @@ export type ProfileUpdate = Partial<ProfileInsert> & { id: string };
 export type RideUpdate = Partial<RideInsert> & { id: string };
 export type RideRequestUpdate = Partial<RideRequestInsert> & { id: string };
 export type UserInterestUpdate = Partial<UserInterestInsert> & { id: string };
-

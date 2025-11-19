@@ -8,12 +8,14 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  TouchableWithoutFeedback,
+  Keyboard,
   ScrollView,
 } from 'react-native';
 import { Link, useRouter } from 'expo-router';
 import { useAuthStore } from '@/stores/authStore';
 import { colors } from '@/constants/colors';
-import { commonStyles, spacing, fontSize } from '@/constants/styles';
+import { spacing, borderRadius, fontSize } from '@/constants/styles';
 
 export default function SignupScreen() {
   const [displayName, setDisplayName] = useState('');
@@ -25,8 +27,10 @@ export default function SignupScreen() {
   const router = useRouter();
 
   const handleSignup = async () => {
+    Keyboard.dismiss();
+
     if (!displayName || !email || !password || !confirmPassword) {
-      Alert.alert('Error', 'Please fill in all fields');
+      Alert.alert('Missing Info', 'Please fill in all fields');
       return;
     }
 
@@ -53,160 +57,187 @@ export default function SignupScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={commonStyles.container}
+      style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={0}
     >
-      <ScrollView
-        contentContainerStyle={styles.scrollContainer}
-        keyboardShouldPersistTaps="handled"
-      >
-        <View style={styles.content}>
-          <View style={styles.header}>
-            <Text style={styles.title}>Create Account</Text>
-            <Text style={styles.subtitle}>Join the community and start sharing rides</Text>
-          </View>
-
-          <View style={styles.form}>
-            <View style={styles.inputContainer}>
-              <Text style={styles.label}>Display Name</Text>
-              <TextInput
-                style={[commonStyles.input, styles.input]}
-                placeholder="John Doe"
-                placeholderTextColor={colors.textMuted}
-                value={displayName}
-                onChangeText={setDisplayName}
-                autoCapitalize="words"
-                autoComplete="name"
-                editable={!loading}
-              />
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+        <View style={styles.inner}>
+          <ScrollView
+            contentContainerStyle={styles.scrollContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={styles.header}>
+              <Text style={styles.title}>Create Account</Text>
+              <Text style={styles.subtitle}>Join the ride sharing community</Text>
             </View>
 
-            <View style={styles.inputContainer}>
-              <Text style={styles.label}>Email</Text>
-              <TextInput
-                style={[commonStyles.input, styles.input]}
-                placeholder="your@email.com"
-                placeholderTextColor={colors.textMuted}
-                value={email}
-                onChangeText={setEmail}
-                autoCapitalize="none"
-                keyboardType="email-address"
-                autoComplete="email"
-                editable={!loading}
-              />
-            </View>
+            <View style={styles.form}>
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Name</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="John Doe"
+                  placeholderTextColor={colors.textMuted}
+                  value={displayName}
+                  onChangeText={setDisplayName}
+                  autoCapitalize="words"
+                  editable={!loading}
+                  returnKeyType="next"
+                />
+              </View>
 
-            <View style={styles.inputContainer}>
-              <Text style={styles.label}>Password</Text>
-              <TextInput
-                style={[commonStyles.input, styles.input]}
-                placeholder="••••••••"
-                placeholderTextColor={colors.textMuted}
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry
-                autoComplete="password-new"
-                editable={!loading}
-              />
-            </View>
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Email</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="your@email.com"
+                  placeholderTextColor={colors.textMuted}
+                  value={email}
+                  onChangeText={setEmail}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  autoComplete="email"
+                  editable={!loading}
+                  returnKeyType="next"
+                />
+              </View>
 
-            <View style={styles.inputContainer}>
-              <Text style={styles.label}>Confirm Password</Text>
-              <TextInput
-                style={[commonStyles.input, styles.input]}
-                placeholder="••••••••"
-                placeholderTextColor={colors.textMuted}
-                value={confirmPassword}
-                onChangeText={setConfirmPassword}
-                secureTextEntry
-                autoComplete="password-new"
-                editable={!loading}
-              />
-            </View>
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Password</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="••••••••"
+                  placeholderTextColor={colors.textMuted}
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry
+                  editable={!loading}
+                  returnKeyType="next"
+                />
+              </View>
 
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Confirm Password</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="••••••••"
+                  placeholderTextColor={colors.textMuted}
+                  value={confirmPassword}
+                  onChangeText={setConfirmPassword}
+                  secureTextEntry
+                  editable={!loading}
+                  returnKeyType="go"
+                  onSubmitEditing={handleSignup}
+                />
+              </View>
+            </View>
+          </ScrollView>
+
+          <View style={styles.footer}>
             <TouchableOpacity
-              style={[commonStyles.primaryButton, styles.button]}
+              style={[styles.button, loading && styles.buttonDisabled]}
               onPress={handleSignup}
               disabled={loading}
             >
-              <Text style={[commonStyles.buttonText, styles.buttonText]}>
+              <Text style={styles.buttonText}>
                 {loading ? 'Creating Account...' : 'Create Account'}
               </Text>
             </TouchableOpacity>
 
-            <View style={styles.footer}>
-              <Text style={styles.footerText}>Already have an account? </Text>
+            <View style={styles.loginRow}>
+              <Text style={styles.loginText}>Already have an account? </Text>
               <Link href="/(auth)/login" asChild>
                 <TouchableOpacity disabled={loading}>
-                  <Text style={styles.link}>Sign In</Text>
+                  <Text style={styles.loginLink}>Sign In</Text>
                 </TouchableOpacity>
               </Link>
             </View>
           </View>
         </View>
-      </ScrollView>
+      </TouchableWithoutFeedback>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  scrollContainer: {
-    flexGrow: 1,
-  },
-  content: {
+  container: {
     flex: 1,
-    padding: spacing.xxl,
+    backgroundColor: colors.background,
+  },
+  inner: {
+    flex: 1,
+    padding: spacing.xl,
+  },
+  scrollContent: {
+    flexGrow: 1,
     justifyContent: 'center',
+    paddingBottom: spacing.xl,
   },
   header: {
-    marginBottom: spacing.xxxl * 2,
+    marginBottom: spacing.xxl,
   },
   title: {
-    fontSize: fontSize.xxxl + 8,
+    fontSize: fontSize.xxxl + 12,
     fontWeight: '700',
     color: colors.text,
-    marginBottom: spacing.sm,
+    marginBottom: spacing.xs,
   },
   subtitle: {
-    fontSize: fontSize.lg,
+    fontSize: fontSize.md,
     color: colors.textSecondary,
-    lineHeight: 26,
   },
   form: {
-    gap: spacing.lg,
+    gap: spacing.md,
   },
-  inputContainer: {
-    gap: spacing.sm,
+  inputGroup: {
+    gap: spacing.xs,
   },
   label: {
-    fontSize: fontSize.md,
+    fontSize: fontSize.sm,
     fontWeight: '600',
-    color: colors.text,
+    color: colors.textSecondary,
   },
   input: {
-    fontSize: fontSize.lg,
-  },
-  button: {
-    marginTop: spacing.lg,
-    paddingVertical: spacing.lg,
-  },
-  buttonText: {
-    fontSize: fontSize.lg,
+    backgroundColor: colors.cardBackground,
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    fontSize: fontSize.md,
+    color: colors.text,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   footer: {
+    gap: spacing.md,
+    paddingTop: spacing.md,
+  },
+  button: {
+    backgroundColor: colors.primary,
+    paddingVertical: spacing.md,
+    borderRadius: borderRadius.pill,
+    alignItems: 'center',
+  },
+  buttonDisabled: {
+    opacity: 0.5,
+  },
+  buttonText: {
+    fontSize: fontSize.md,
+    fontWeight: '600',
+    color: colors.background,
+  },
+  loginRow: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: spacing.lg,
   },
-  footerText: {
-    fontSize: fontSize.md,
+  loginText: {
+    fontSize: fontSize.sm,
     color: colors.textSecondary,
   },
-  link: {
-    fontSize: fontSize.md,
+  loginLink: {
+    fontSize: fontSize.sm,
     fontWeight: '600',
     color: colors.primary,
   },
 });
-

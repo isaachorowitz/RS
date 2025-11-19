@@ -2,30 +2,32 @@ import { useEffect, useState } from 'react';
 import {
   View,
   Text,
-  ScrollView,
+  FlatList,
   StyleSheet,
   TouchableOpacity,
   RefreshControl,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '@/stores/authStore';
 import { supabase } from '@/lib/supabase';
 import { Ride } from '@/types/database';
 import { colors } from '@/constants/colors';
-import { commonStyles, spacing, borderRadius, fontSize } from '@/constants/styles';
-import { formatLocation, formatRelativeTime } from '@/lib/format';
+import { spacing, borderRadius, fontSize } from '@/constants/styles';
+import { formatRelativeTime } from '@/lib/format';
 
-interface ChatPreview {
+interface ChatItem {
   ride: Ride;
   lastMessage?: {
     content: string;
     created_at: string;
+    sender_id: string;
   };
 }
 
 export default function ChatsScreen() {
   const user = useAuthStore(state => state.user);
-  const [chats, setChats] = useState<ChatPreview[]>([]);
+  const [chats, setChats] = useState<ChatItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const router = useRouter();
@@ -33,6 +35,9 @@ export default function ChatsScreen() {
   useEffect(() => {
     if (user) {
       loadChats();
+      // Refresh every 5 seconds to catch new chats
+      const interval = setInterval(loadChats, 5000);
+      return () => clearInterval(interval);
     }
   }, [user]);
 
@@ -42,62 +47,88 @@ export default function ChatsScreen() {
     try {
       setLoading(true);
 
-      // Get rides where user is owner or has approved request
-      const { data: ownedRides, error: ownedError } = await supabase
-        .from('rides')
-        .select(`
-          *,
-          profile:profiles(*)
-        `)
-        .eq('user_id', user.id)
-        .eq('status', 'active');
+      // Simple approach: Get all messages involving this user
+      const { data: myMessages, error: msgError } = await supabase
+        .from('chat_messages')
+        .select('ride_id')
+        .eq('sender_id', user.id);
 
-      const { data: joinedRides, error: joinedError } = await supabase
-        .from('ride_requests')
-        .select(`
-          ride:rides(
+      if (msgError) {
+        console.error('Error fetching my messages:', msgError);
+        setLoading(false);
+        return;
+      }
+
+      // Get messages in rides I own
+      const { data: myRidesData } = await supabase
+        .from('rides')
+        .select('id')
+        .eq('user_id', user.id);
+
+      const myRideIds = myRidesData?.map(r => r.id) || [];
+
+      const { data: messagesInMyRides } = await supabase
+        .from('chat_messages')
+        .select('ride_id')
+        .in('ride_id', myRideIds.length > 0 ? myRideIds : ['none']);
+
+      // Combine all ride IDs
+      const allRideIds = new Set([
+        ...(myMessages?.map(m => m.ride_id) || []),
+        ...(messagesInMyRides?.map(m => m.ride_id) || []),
+      ]);
+
+      if (allRideIds.size === 0) {
+        setChats([]);
+        setLoading(false);
+        return;
+      }
+
+      // Fetch rides with messages
+      const chatsPromises = Array.from(allRideIds).map(async (rideId) => {
+        // Get ride
+        const { data: ride, error: rideError } = await supabase
+          .from('rides')
+          .select(`
             *,
             profile:profiles(*)
-          )
-        `)
-        .eq('requester_id', user.id)
-        .eq('status', 'approved');
+          `)
+          .eq('id', rideId)
+          .single();
 
-      if (ownedError) throw ownedError;
-      if (joinedError) throw joinedError;
+        if (rideError || !ride) return null;
 
-      // Combine and deduplicate rides
-      const allRides = [
-        ...(ownedRides || []),
-        ...(joinedRides || []).map(jr => jr.ride).filter(Boolean),
-      ];
+        // Get last message
+        const { data: lastMsg } = await supabase
+          .from('chat_messages')
+          .select(`
+            content,
+            created_at,
+            sender_id,
+            profile:profiles(display_name)
+          `)
+          .eq('ride_id', rideId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .single();
 
-      // Get last message for each ride
-      const chatsWithMessages = await Promise.all(
-        allRides.map(async (ride) => {
-          const { data: lastMessage } = await supabase
-            .from('chat_messages')
-            .select('content, created_at')
-            .eq('ride_id', ride.id)
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .single();
+        return {
+          ride,
+          lastMessage: lastMsg || undefined,
+        };
+      });
 
-          return {
-            ride,
-            lastMessage: lastMessage || undefined,
-          };
-        })
-      );
-
+      const chatsData = await Promise.all(chatsPromises);
+      const validChats = chatsData.filter(Boolean) as ChatItem[];
+      
       // Sort by last message time
-      chatsWithMessages.sort((a, b) => {
+      validChats.sort((a, b) => {
         const aTime = a.lastMessage?.created_at || a.ride.created_at;
         const bTime = b.lastMessage?.created_at || b.ride.created_at;
         return new Date(bTime).getTime() - new Date(aTime).getTime();
       });
 
-      setChats(chatsWithMessages);
+      setChats(validChats);
     } catch (error) {
       console.error('Error loading chats:', error);
     } finally {
@@ -111,19 +142,58 @@ export default function ChatsScreen() {
     setRefreshing(false);
   };
 
-  const handleChatPress = (rideId: string) => {
-    router.push(`/chat/${rideId}`);
+  const renderChat = ({ item }: { item: ChatItem }) => {
+    const isMyMessage = item.lastMessage?.sender_id === user?.id;
+    
+    return (
+      <TouchableOpacity
+        style={styles.chatItem}
+        onPress={() => router.push(`/chat/${item.ride.id}`)}
+        activeOpacity={0.7}
+      >
+        <View style={styles.chatIcon}>
+          <Ionicons name="chatbubble" size={24} color={colors.primary} />
+        </View>
+        <View style={styles.chatContent}>
+          <Text style={styles.chatDestination} numberOfLines={1}>
+            {item.ride.is_event && item.ride.event_name 
+              ? item.ride.event_name 
+              : `To ${item.ride.destination.city}`}
+          </Text>
+          {item.lastMessage ? (
+            <Text style={styles.lastMessage} numberOfLines={1}>
+              {isMyMessage && 'You: '}{item.lastMessage.content}
+            </Text>
+          ) : (
+            <Text style={styles.noMessages}>No messages yet</Text>
+          )}
+        </View>
+        <View style={styles.chatMeta}>
+          {item.lastMessage && (
+            <Text style={styles.timestamp}>
+              {formatRelativeTime(item.lastMessage.created_at)}
+            </Text>
+          )}
+          <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+        </View>
+      </TouchableOpacity>
+    );
   };
 
   return (
-    <View style={commonStyles.container}>
+    <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>Chats</Text>
-        <Text style={styles.subtitle}>Your active conversations</Text>
+        <TouchableOpacity onPress={loadChats}>
+          <Ionicons name="refresh" size={22} color={colors.primary} />
+        </TouchableOpacity>
       </View>
 
-      <ScrollView
-        contentContainerStyle={styles.scrollContainer}
+      <FlatList
+        data={chats}
+        renderItem={renderChat}
+        keyExtractor={(item) => item.ride.id}
+        contentContainerStyle={styles.listContainer}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
@@ -132,135 +202,121 @@ export default function ChatsScreen() {
             tintColor={colors.primary}
           />
         }
-      >
-        {loading && chats.length === 0 ? (
+        ListEmptyComponent={
           <View style={styles.emptyState}>
-            <Text style={styles.emptyText}>Loading chats...</Text>
-          </View>
-        ) : chats.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyTitle}>No active chats</Text>
+            <Ionicons name="chatbubbles-outline" size={64} color={colors.textMuted} />
+            <Text style={styles.emptyTitle}>No chats yet</Text>
             <Text style={styles.emptyText}>
-              Join a ride to start chatting with other riders
+              View a ride and tap Chat to start a conversation
             </Text>
+            {!loading && (
+              <TouchableOpacity style={styles.refreshButton} onPress={loadChats}>
+                <Ionicons name="refresh" size={18} color={colors.primary} />
+                <Text style={styles.refreshButtonText}>Refresh</Text>
+              </TouchableOpacity>
+            )}
           </View>
-        ) : (
-          chats.map((chat) => (
-            <TouchableOpacity
-              key={chat.ride.id}
-              style={styles.chatCard}
-              onPress={() => handleChatPress(chat.ride.id)}
-              activeOpacity={0.7}
-            >
-              <View style={styles.chatHeader}>
-                <View style={styles.route}>
-                  <Text style={styles.location} numberOfLines={1}>
-                    {formatLocation(chat.ride.start_location)}
-                  </Text>
-                  <Text style={styles.arrow}>→</Text>
-                  <Text style={styles.location} numberOfLines={1}>
-                    {formatLocation(chat.ride.destination)}
-                  </Text>
-                </View>
-              </View>
-
-              {chat.lastMessage ? (
-                <View style={styles.lastMessageContainer}>
-                  <Text style={styles.lastMessage} numberOfLines={2}>
-                    {chat.lastMessage.content}
-                  </Text>
-                  <Text style={styles.timestamp}>
-                    {formatRelativeTime(chat.lastMessage.created_at)}
-                  </Text>
-                </View>
-              ) : (
-                <Text style={styles.noMessages}>No messages yet</Text>
-              )}
-            </TouchableOpacity>
-          ))
-        )}
-      </ScrollView>
+        }
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
   header: {
-    padding: spacing.xxl,
-    paddingTop: spacing.xxxl * 2,
-    paddingBottom: spacing.lg,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.xxxl + spacing.xl,
+    paddingBottom: spacing.md,
   },
   title: {
-    fontSize: fontSize.xxxl + 8,
+    fontSize: fontSize.xxl,
     fontWeight: '700',
     color: colors.text,
-    marginBottom: spacing.xs,
   },
-  subtitle: {
-    fontSize: fontSize.md,
-    color: colors.textSecondary,
+  listContainer: {
+    padding: spacing.md,
   },
-  scrollContainer: {
-    padding: spacing.xxl,
-    paddingTop: spacing.md,
-  },
-  emptyState: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing.xxxl * 2,
-  },
-  emptyTitle: {
-    fontSize: fontSize.xl,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: spacing.sm,
-  },
-  emptyText: {
-    fontSize: fontSize.md,
-    color: colors.textSecondary,
-    textAlign: 'center',
-  },
-  chatCard: {
-    backgroundColor: colors.cardBackground,
-    borderRadius: borderRadius.xxl,
-    padding: spacing.xl,
-    marginBottom: spacing.md,
-  },
-  chatHeader: {
-    marginBottom: spacing.sm,
-  },
-  route: {
+  chatItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xs,
+    gap: spacing.md,
+    backgroundColor: colors.cardBackground,
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
   },
-  location: {
-    fontSize: fontSize.lg,
-    fontWeight: '700',
-    color: colors.text,
+  chatIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.primary + '20',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chatContent: {
     flex: 1,
   },
-  arrow: {
-    fontSize: fontSize.lg,
-    color: colors.yellow,
+  chatDestination: {
+    fontSize: fontSize.md,
     fontWeight: '600',
-  },
-  lastMessageContainer: {
-    gap: spacing.xs,
+    color: colors.text,
+    marginBottom: 4,
   },
   lastMessage: {
-    fontSize: fontSize.md,
-    color: colors.textSecondary,
-    lineHeight: 20,
-  },
-  timestamp: {
     fontSize: fontSize.sm,
-    color: colors.textMuted,
+    color: colors.textSecondary,
   },
   noMessages: {
     fontSize: fontSize.sm,
     color: colors.textMuted,
     fontStyle: 'italic',
   },
+  chatMeta: {
+    alignItems: 'flex-end',
+    gap: spacing.xs,
+  },
+  timestamp: {
+    fontSize: fontSize.xs,
+    color: colors.textMuted,
+  },
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.xxxl * 3,
+  },
+  emptyTitle: {
+    fontSize: fontSize.lg,
+    fontWeight: '600',
+    color: colors.text,
+    marginTop: spacing.lg,
+    marginBottom: spacing.xs,
+  },
+  emptyText: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    paddingHorizontal: spacing.xl,
+  },
+  refreshButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginTop: spacing.lg,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    backgroundColor: colors.cardBackground,
+    borderRadius: borderRadius.pill,
+  },
+  refreshButtonText: {
+    fontSize: fontSize.sm,
+    fontWeight: '600',
+    color: colors.primary,
+  },
 });
-

@@ -2,21 +2,20 @@ import { useState, useEffect } from 'react';
 import {
   View,
   Text,
-  ScrollView,
   StyleSheet,
   TouchableOpacity,
   Image,
-  TextInput,
   Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import { useAuthStore } from '@/stores/authStore';
 import { useRidesStore } from '@/stores/ridesStore';
 import { supabase } from '@/lib/supabase';
 import { colors } from '@/constants/colors';
-import { commonStyles, spacing, borderRadius, fontSize } from '@/constants/styles';
+import { spacing, borderRadius, fontSize } from '@/constants/styles';
 import { Location as LocationType } from '@/types/database';
 
 export default function ProfileScreen() {
@@ -24,32 +23,22 @@ export default function ProfileScreen() {
   const profile = useAuthStore(state => state.profile);
   const updateProfile = useAuthStore(state => state.updateProfile);
   const signOut = useAuthStore(state => state.signOut);
-  const userInterests = useRidesStore(state => state.userInterests);
-  const fetchUserInterests = useRidesStore(state => state.fetchUserInterests);
-  const addUserInterest = useRidesStore(state => state.addUserInterest);
-  const removeUserInterest = useRidesStore(state => state.removeUserInterest);
-  
-  const [editing, setEditing] = useState(false);
-  const [displayName, setDisplayName] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [showAddInterest, setShowAddInterest] = useState(false);
-  const [newInterestName, setNewInterestName] = useState('');
-  const [newInterestRadius, setNewInterestRadius] = useState('50');
+  const myRides = useRidesStore(state => state.myRides);
+  const fetchMyRides = useRidesStore(state => state.fetchMyRides);
   const router = useRouter();
+  
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (profile) {
-      setDisplayName(profile.display_name);
-    }
     if (user) {
-      fetchUserInterests(user.id);
+      fetchMyRides(user.id);
     }
-  }, [profile, user]);
+  }, [user]);
 
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Permission Required', 'We need permission to access your photos');
+      Alert.alert('Permission Required', 'We need access to your photos');
       return;
     }
 
@@ -64,7 +53,6 @@ export default function ProfileScreen() {
       setLoading(true);
       const uri = result.assets[0].uri;
       
-      // Upload photo
       const response = await fetch(uri);
       const blob = await response.blob();
       const fileExt = uri.split('.').pop();
@@ -92,7 +80,7 @@ export default function ProfileScreen() {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission Required', 'We need permission to access your location');
+        Alert.alert('Permission Required', 'We need access to your location');
         setLoading(false);
         return;
       }
@@ -105,64 +93,20 @@ export default function ProfileScreen() {
       const locationData: LocationType = {
         latitude,
         longitude,
-        address: `${address.street || ''}, ${address.city || ''}, ${address.country || ''}`,
+        address: `${address.city || ''}, ${address.country || ''}`,
         city: address.city || undefined,
       };
 
       await updateProfile({ location: locationData });
-      Alert.alert('Success', 'Location updated');
+      Alert.alert('Updated', 'Location updated successfully');
     } catch (error) {
       Alert.alert('Error', 'Failed to update location');
     }
     setLoading(false);
   };
 
-  const handleSaveProfile = async () => {
-    if (!displayName) {
-      Alert.alert('Error', 'Display name cannot be empty');
-      return;
-    }
-
-    setLoading(true);
-    await updateProfile({ display_name: displayName });
-    setLoading(false);
-    setEditing(false);
-  };
-
-  const handleAddInterest = async () => {
-    if (!newInterestName || !user) return;
-
-    const radius = parseInt(newInterestRadius);
-    if (isNaN(radius) || radius < 1) {
-      Alert.alert('Error', 'Invalid radius');
-      return;
-    }
-
-    setLoading(true);
-    const { error } = await addUserInterest({
-      user_id: user.id,
-      place_name: newInterestName,
-      place_location: null,
-      preferred_times: [],
-      radius_km: radius,
-    });
-
-    if (error) {
-      Alert.alert('Error', error);
-    } else {
-      setNewInterestName('');
-      setNewInterestRadius('50');
-      setShowAddInterest(false);
-    }
-    setLoading(false);
-  };
-
-  const handleRemoveInterest = async (id: string) => {
-    await removeUserInterest(id);
-  };
-
-  const handleSignOut = async () => {
-    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
+  const handleSignOut = () => {
+    Alert.alert('Sign Out', 'Are you sure?', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Sign Out',
@@ -175,296 +119,169 @@ export default function ProfileScreen() {
     ]);
   };
 
+  const handleViewMyRides = () => {
+    // TODO: Navigate to my rides view or switch feed tab
+  };
+
   return (
-    <View style={commonStyles.container}>
-      <ScrollView
-        contentContainerStyle={styles.scrollContainer}
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.header}>
-          <Text style={styles.title}>Profile</Text>
-        </View>
+    <View style={styles.container}>
+      {/* Header */}
+      <View style={styles.header}>
+        <Text style={styles.title}>Profile</Text>
+      </View>
 
-        <View style={styles.content}>
-          {/* Profile Photo */}
-          <View style={styles.photoSection}>
-            <TouchableOpacity onPress={pickImage} disabled={loading}>
-              {profile?.photo_url ? (
-                <Image source={{ uri: profile.photo_url }} style={styles.photo} />
-              ) : (
-                <View style={styles.photoPlaceholder}>
-                  <Text style={styles.photoPlaceholderText}>+</Text>
-                </View>
-              )}
-            </TouchableOpacity>
-          </View>
-
-          {/* Display Name */}
-          <View style={commonStyles.cardLarge}>
-            <Text style={styles.label}>Display Name</Text>
-            {editing ? (
-              <TextInput
-                style={[commonStyles.input, styles.input]}
-                value={displayName}
-                onChangeText={setDisplayName}
-                editable={!loading}
-              />
-            ) : (
-              <Text style={styles.value}>{profile?.display_name}</Text>
-            )}
-            
-            <Text style={[styles.label, { marginTop: spacing.lg }]}>Email</Text>
-            <Text style={styles.value}>{profile?.email}</Text>
-
-            <View style={styles.buttonRow}>
-              {editing ? (
-                <>
-                  <TouchableOpacity
-                    style={[commonStyles.secondaryButton, styles.halfButton]}
-                    onPress={() => {
-                      setEditing(false);
-                      setDisplayName(profile?.display_name || '');
-                    }}
-                    disabled={loading}
-                  >
-                    <Text style={commonStyles.secondaryButtonText}>Cancel</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[commonStyles.primaryButton, styles.halfButton]}
-                    onPress={handleSaveProfile}
-                    disabled={loading}
-                  >
-                    <Text style={commonStyles.buttonText}>Save</Text>
-                  </TouchableOpacity>
-                </>
-              ) : (
-                <TouchableOpacity
-                  style={commonStyles.secondaryButton}
-                  onPress={() => setEditing(true)}
-                >
-                  <Text style={commonStyles.secondaryButtonText}>Edit Profile</Text>
-                </TouchableOpacity>
-              )}
+      {/* Photo & Name */}
+      <View style={styles.photoSection}>
+        <TouchableOpacity onPress={pickImage} disabled={loading}>
+          {profile?.photo_url ? (
+            <Image source={{ uri: profile.photo_url }} style={styles.photo} />
+          ) : (
+            <View style={styles.photoPlaceholder}>
+              <Ionicons name="person" size={40} color={colors.textMuted} />
             </View>
-          </View>
+          )}
+        </TouchableOpacity>
+        <Text style={styles.displayName}>{profile?.display_name}</Text>
+        <Text style={styles.email}>{profile?.email}</Text>
+      </View>
 
-          {/* Location */}
-          <View style={commonStyles.cardLarge}>
-            <Text style={styles.label}>Location</Text>
-            {profile?.location ? (
-              <>
-                <Text style={styles.value}>{profile.location.city}</Text>
-                <Text style={styles.subvalue} numberOfLines={2}>
-                  {profile.location.address}
-                </Text>
-              </>
-            ) : (
-              <Text style={styles.subvalue}>No location set</Text>
-            )}
-            <TouchableOpacity
-              style={[commonStyles.secondaryButton, { marginTop: spacing.md }]}
-              onPress={updateLocation}
-              disabled={loading}
-            >
-              <Text style={commonStyles.secondaryButtonText}>Update Location</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Interests */}
-          <View style={commonStyles.cardLarge}>
-            <Text style={styles.label}>Your Interests</Text>
-            <Text style={styles.subvalue}>
-              Add places you frequently travel to for a personalized feed
-            </Text>
-
-            <View style={styles.interestsList}>
-              {userInterests.map(interest => (
-                <View key={interest.id} style={styles.interestItem}>
-                  <View style={styles.interestInfo}>
-                    <Text style={styles.interestName}>{interest.place_name}</Text>
-                    <Text style={styles.interestRadius}>
-                      Within {interest.radius_km}km
-                    </Text>
-                  </View>
-                  <TouchableOpacity
-                    onPress={() => handleRemoveInterest(interest.id)}
-                    disabled={loading}
-                  >
-                    <Text style={styles.removeButton}>✕</Text>
-                  </TouchableOpacity>
-                </View>
-              ))}
-            </View>
-
-            {showAddInterest ? (
-              <View style={styles.addInterestForm}>
-                <TextInput
-                  style={[commonStyles.input, styles.input]}
-                  placeholder="Place name (e.g., Tel Aviv)"
-                  placeholderTextColor={colors.textMuted}
-                  value={newInterestName}
-                  onChangeText={setNewInterestName}
-                  editable={!loading}
-                />
-                <TextInput
-                  style={[commonStyles.input, styles.input]}
-                  placeholder="Radius (km)"
-                  placeholderTextColor={colors.textMuted}
-                  value={newInterestRadius}
-                  onChangeText={setNewInterestRadius}
-                  keyboardType="numeric"
-                  editable={!loading}
-                />
-                <View style={styles.buttonRow}>
-                  <TouchableOpacity
-                    style={[commonStyles.secondaryButton, styles.halfButton]}
-                    onPress={() => {
-                      setShowAddInterest(false);
-                      setNewInterestName('');
-                      setNewInterestRadius('50');
-                    }}
-                    disabled={loading}
-                  >
-                    <Text style={commonStyles.secondaryButtonText}>Cancel</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[commonStyles.primaryButton, styles.halfButton]}
-                    onPress={handleAddInterest}
-                    disabled={loading}
-                  >
-                    <Text style={commonStyles.buttonText}>Add</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ) : (
-              <TouchableOpacity
-                style={[commonStyles.secondaryButton, { marginTop: spacing.md }]}
-                onPress={() => setShowAddInterest(true)}
-              >
-                <Text style={commonStyles.secondaryButtonText}>+ Add Interest</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-
-          {/* Sign Out */}
-          <TouchableOpacity
-            style={[commonStyles.secondaryButton, styles.signOutButton]}
-            onPress={handleSignOut}
-          >
-            <Text style={[commonStyles.secondaryButtonText, { color: colors.error }]}>
-              Sign Out
-            </Text>
-          </TouchableOpacity>
+      {/* Stats */}
+      <View style={styles.statsRow}>
+        <View style={styles.statCard}>
+          <Text style={styles.statNumber}>{myRides.length}</Text>
+          <Text style={styles.statLabel}>Rides Posted</Text>
         </View>
-      </ScrollView>
+        <View style={styles.statCard}>
+          <Text style={styles.statNumber}>0</Text>
+          <Text style={styles.statLabel}>Rides Joined</Text>
+        </View>
+      </View>
+
+      {/* Actions */}
+      <View style={styles.actions}>
+        <TouchableOpacity style={styles.actionButton} onPress={updateLocation}>
+          <Ionicons name="location" size={20} color={colors.primary} />
+          <View style={styles.actionContent}>
+            <Text style={styles.actionTitle}>Update Location</Text>
+            <Text style={styles.actionSubtitle} numberOfLines={1}>
+              {profile?.location?.city || 'Not set'}
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.actionButton} onPress={pickImage}>
+          <Ionicons name="image" size={20} color={colors.primary} />
+          <View style={styles.actionContent}>
+            <Text style={styles.actionTitle}>Change Photo</Text>
+            <Text style={styles.actionSubtitle}>Update your profile picture</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.actionButton} onPress={handleSignOut}>
+          <Ionicons name="log-out" size={20} color={colors.error} />
+          <View style={styles.actionContent}>
+            <Text style={[styles.actionTitle, { color: colors.error }]}>Sign Out</Text>
+          </View>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  scrollContainer: {
-    paddingBottom: spacing.xxxl,
+  container: {
+    flex: 1,
+    backgroundColor: colors.background,
   },
   header: {
-    padding: spacing.xxl,
-    paddingTop: spacing.xxxl * 2,
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.xxxl + spacing.xl,
+    paddingBottom: spacing.lg,
   },
   title: {
-    fontSize: fontSize.xxxl + 8,
+    fontSize: fontSize.xxl,
     fontWeight: '700',
     color: colors.text,
   },
-  content: {
-    padding: spacing.xxl,
-    gap: spacing.lg,
-  },
   photoSection: {
     alignItems: 'center',
-    marginBottom: spacing.lg,
+    paddingVertical: spacing.xl,
   },
   photo: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    marginBottom: spacing.md,
   },
   photoPlaceholder: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
+    width: 100,
+    height: 100,
+    borderRadius: 50,
     backgroundColor: colors.cardBackground,
     justifyContent: 'center',
     alignItems: 'center',
+    marginBottom: spacing.md,
     borderWidth: 2,
     borderColor: colors.border,
   },
-  photoPlaceholderText: {
-    fontSize: fontSize.xxxl * 2,
-    color: colors.primary,
-  },
-  label: {
-    fontSize: fontSize.md,
-    fontWeight: '600',
-    color: colors.textSecondary,
+  displayName: {
+    fontSize: fontSize.xl,
+    fontWeight: '700',
+    color: colors.text,
     marginBottom: spacing.xs,
   },
-  value: {
-    fontSize: fontSize.xl,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  subvalue: {
-    fontSize: fontSize.md,
-    color: colors.textSecondary,
-    marginTop: spacing.xs,
-  },
-  input: {
-    marginTop: spacing.xs,
-  },
-  buttonRow: {
-    flexDirection: 'row',
-    gap: spacing.md,
-    marginTop: spacing.lg,
-  },
-  halfButton: {
-    flex: 1,
-  },
-  interestsList: {
-    marginTop: spacing.md,
-    gap: spacing.sm,
-  },
-  interestItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: colors.background,
-    padding: spacing.md,
-    borderRadius: borderRadius.md,
-  },
-  interestInfo: {
-    flex: 1,
-  },
-  interestName: {
-    fontSize: fontSize.md,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  interestRadius: {
+  email: {
     fontSize: fontSize.sm,
     color: colors.textSecondary,
-    marginTop: 2,
   },
-  removeButton: {
-    fontSize: fontSize.xl,
-    color: colors.error,
-    paddingHorizontal: spacing.sm,
-  },
-  addInterestForm: {
-    marginTop: spacing.md,
+  statsRow: {
+    flexDirection: 'row',
+    paddingHorizontal: spacing.xl,
     gap: spacing.md,
+    marginBottom: spacing.xl,
   },
-  signOutButton: {
-    marginTop: spacing.lg,
-    borderColor: colors.error,
+  statCard: {
+    flex: 1,
+    backgroundColor: colors.cardBackground,
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
+    alignItems: 'center',
+  },
+  statNumber: {
+    fontSize: fontSize.xxl,
+    fontWeight: '700',
+    color: colors.primary,
+    marginBottom: spacing.xs,
+  },
+  statLabel: {
+    fontSize: fontSize.xs,
+    color: colors.textSecondary,
+  },
+  actions: {
+    paddingHorizontal: spacing.xl,
+    gap: spacing.sm,
+  },
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    backgroundColor: colors.cardBackground,
+    padding: spacing.md,
+    borderRadius: borderRadius.lg,
+  },
+  actionContent: {
+    flex: 1,
+  },
+  actionTitle: {
+    fontSize: fontSize.md,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 2,
+  },
+  actionSubtitle: {
+    fontSize: fontSize.xs,
+    color: colors.textSecondary,
   },
 });
-

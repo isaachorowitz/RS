@@ -1,5 +1,5 @@
-import { Text } from 'react-native';
 import { Tabs } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants/colors';
 
 export default function TabsLayout() {
@@ -27,47 +27,39 @@ export default function TabsLayout() {
         name="index"
         options={{
           title: 'Feed',
-          tabBarIcon: ({ color }) => <TabIcon name="feed" color={color} />,
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="home" size={size || 24} color={color} />
+          ),
         }}
       />
       <Tabs.Screen
         name="post-ride"
         options={{
           title: 'Post Ride',
-          tabBarIcon: ({ color }) => <TabIcon name="add" color={color} />,
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="add-circle" size={size || 24} color={color} />
+          ),
         }}
       />
       <Tabs.Screen
         name="chats"
         options={{
           title: 'Chats',
-          tabBarIcon: ({ color }) => <TabIcon name="chat" color={color} />,
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="chatbubbles" size={size || 24} color={color} />
+          ),
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
           title: 'Profile',
-          tabBarIcon: ({ color }) => <TabIcon name="profile" color={color} />,
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="person" size={size || 24} color={color} />
+          ),
         }}
       />
     </Tabs>
-  );
-}
-
-// Simple icon component using emojis
-function TabIcon({ name, color }: { name: string; color: string }) {
-  const icons: Record<string, string> = {
-    feed: '🏠',
-    add: '➕',
-    chat: '💬',
-    profile: '👤',
-  };
-
-  return (
-    <Text style={{ fontSize: 24 }}>
-      {icons[name] || '◯'}
-    </Text>
   );
 }
 
